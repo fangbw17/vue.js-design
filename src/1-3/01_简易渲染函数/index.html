@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>简易渲染函数</title>
+</head>
+
+<body>
+    <div id="app"></div>
+    <script type="text/javascript" src="../renderer.js"></script>
+    <script>
+        function firstClick() {
+            // 修改数据
+            vnode.children = 'click again'
+            console.log(vnode);
+        }
+
+        // 虚拟 DOM
+        const vnode = {
+            tag: 'div',
+            props: {
+                onClick: firstClick
+            },
+            children: 'click me'
+        }
+        
+        // 调用渲染函数
+        renderer(vnode, '#app')
+    </script>
+</body>
+
+</html>
