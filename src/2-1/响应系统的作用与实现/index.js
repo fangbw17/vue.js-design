@@ -70,6 +70,184 @@
     const bucket = new WeakMap();
 
     const ITERATE_KEY = Symbol();
+
+    const MAP_KEY_ITERATE_KEY = Symbol();
+
+    // 定义一个 Map 实例，存储原始对象到代理对象的映射
+    const reactiveMap = new Map();
+    // 重写数组方法
+    const originMethod = Array.prototype.includes;
+    const arrayInstrumentations = {};
+    [("includes", "indexOf", "lastIndexOf")].forEach((method) => {
+      const originMethod = Array.prototype[method];
+      arrayInstrumentations[method] = function (...args) {
+        // this 是代理对象，先再代理对象中查找，将结果存储到 res 中
+        let res = originMethod.apply(this, args);
+        if (res === false || res === -1) {
+          // res 为 false 说明没有找到，通过 this.raw 拿到原始数组，再去其中查找并更新 res 值
+          res = originMethod.apply(this.raw, args);
+        }
+        // 返回最终结果
+        return res;
+      };
+    });
+    // 一个标记变量，代表是否进行追踪。默认值为 true，即允许追踪
+    let shouldTrack = true;
+    // 重写 push 方法
+    ["push", "pop", "shift", "unshift", "splice"].forEach((method) => {
+      const originMethod = Array.prototype[method];
+      arrayInstrumentations[method] = function (...args) {
+        // 调用原始方法之前，禁止追踪
+        shouldTrack = false;
+        // push 方法的默认行为
+        let res = originMethod.apply(this, args);
+        shouldTrack = true;
+        return res;
+      };
+    });
+    // 定义一个对象，将自定义的 add 方法定义到该对象下
+    const mutableInstrumentations = {
+      add(key) {
+        // this 仍然指向的是代理对象，通过 raw 属性获取原始数据对象
+        const target = this.raw;
+        // 通过原始数据对象执行 add 方法添加具体的值
+        // 这里不需要 .bind 了，因为是直接通过 target 调用并执行
+        const res = target.add(key);
+        // 调用 trigger 函数触发响应，并指定操作类型为 ADD
+        if (!target.has(key)) trigger(target, key, "ADD");
+        return res;
+      },
+      delete(key) {
+        const target = this.raw;
+        const res = target.delete(key);
+        if (target.has(key)) trigger(target, key, "DELETE");
+        return res;
+      },
+      get(key) {
+        const target = this.raw;
+        track(target, key);
+        if (target.has(key)) {
+          const res = target.get(key);
+          return typeof res === "object" ? reactive(res) : res;
+        }
+      },
+      set(key, value) {
+        const target = this.raw;
+        const had = target.has(key);
+        // 获取旧值
+        const oldValue = target.get(key);
+        // 设置新值
+        // 获取原始数据，由于 value 本身可能已经是原始数据，所以此时 value.raw 不存在，则直接使用 value
+        const rawValue = value.raw || value;
+        target.set(key, rawValue);
+        // 不存在，则说明是 ADD 操作
+        if (!had) {
+          trigger(target, key, "ADD");
+        } else if (
+          oldValue !== value ||
+          (oldValue === oldValue && value === value)
+        ) {
+          trigger(target, key, "SET");
+        }
+      },
+      forEach(callback, thisArg) {
+        // wrap 函数用来把可代理的值转换为响应式数据
+        const wrap = (val) => (typeof val === "object" ? reactive(val) : val);
+        const target = this.raw;
+        track(target, ITERATE_KEY);
+        // 通过 target 调用原始 forEach 方法进行遍历
+        target.forEach((v, k) => {
+          // 手动调用 callback，用 wrap 函数包裹 vlaue 和 key 后再传给 callback，这样就实现了深响应
+          callback.call(thisArg, wrap(v), wrap(k), this);
+        });
+      },
+      [Symbol.iterator]: iterationMethod,
+      entries: iterationMethod,
+      values: valuesIterationMethod,
+      keys: keysIterationMethod
+    };
+    // 迭代器方法
+    function iterationMethod() {
+      // 获取原始数据对象 target
+      const target = this.raw;
+      // 获取原始迭代器方法
+      const itr = target[Symbol.iterator]();
+
+      const wrap = (val) =>
+        typeof val === "object" && val !== null ? reactive(val) : val;
+
+      // 调用 track 函数建立响应联系
+      track(target, ITERATE_KEY);
+
+      // 返回自定义的迭代器
+      return {
+        // 实现迭代器协议
+        next() {
+          // 调用原始迭代器的 next 方法获取 value 和 done
+          const { value, done } = itr.next();
+          return {
+            // 如果 value 不是 undefined，则对其进行包裹
+            value: value ? [wrap(value[0]), wrap(value[1])] : value,
+            done,
+          };
+        },
+        // 实现可迭代协议
+        [Symbol.iterator]() {
+          return this;
+        },
+      };
+      // 将其返回
+      return itr;
+    }
+    // 迭代器 value 方法
+    function valuesIterationMethod() {
+      // 获取原始数据对象 target
+      const target = this.raw;
+      // 通过 target.values 获取原始迭代器方法
+      const itr = target.values();
+
+      const wrap = (val) => (typeof val === "object" ? reactive(val) : val);
+
+      track(target, ITERATE_KEY);
+
+      return {
+        next() {
+          const { value, done } = itr.next();
+          return {
+            value: wrap(value),
+            done,
+          };
+        },
+        [Symbol.iterator]() {
+          return this;
+        },
+      };
+    }
+    // 迭代器 key 方法
+    function keysIterationMethod() {
+      // 获取原始数据对象 target
+      const target = this.raw;
+      // 获取原始迭代器方法
+      const itr = target.keys();
+
+      const wrap = (val) => (typeof val === "object" ? reactive(val) : val);
+
+      track(target, MAP_KEY_ITERATE_KEY);
+
+      return {
+        next() {
+          const { value, done } = itr.next();
+          return {
+            value: wrap(value),
+            done,
+          };
+        },
+        [Symbol.iterator]() {
+          return this;
+        },
+      };
+    }
+
     // Proxy 对象
     // const obj = reactive(data);
     /**
@@ -86,12 +264,28 @@
           if (key === "raw") {
             return target;
           }
+          // 封装用于代理 set/Map 类型数据的逻辑
+          if (key === "size") {
+            track(target, ITERATE_KEY);
+            return Reflect.get(target, key, target);
+          }
+
+          // 如果操作的目标对象是数组，并且 key 存在于 arrayInstrumentations 上，
+          // 那么返回定义在 arrayInstrumentations 上的值
+          if (
+            Array.isArray(target) &&
+            arrayInstrumentations.hasOwnProperty(key)
+          ) {
+            return Reflect.get(arrayInstrumentations, key, receiver);
+          }
           // 非只读建立响应联系
-          if (!isReadonly) {
+          if (!isReadonly && typeof key !== "symbol") {
             // 追踪
             track(target, key);
           }
-          const res = Reflect.get(target, key, receiver);
+          // const res = Reflect.get(target, key, receiver);
+          // const res = target[key].bind(target);
+          const res = mutableInstrumentations[key];
 
           // 浅响应直接返回对象
           if (isShallow) {
@@ -140,7 +334,7 @@
         },
         // for...in
         ownKeys(target) {
-          track(target, Array.isArray(target) ? 'length' : ITERATE_KEY);
+          track(target, Array.isArray(target) ? "length" : ITERATE_KEY);
           return Reflect.ownKeys(target);
         },
         // delete property
@@ -164,7 +358,15 @@
     }
     // 深度响应
     function reactive(obj) {
-      return createReactive(obj);
+      // 优先通过原始对象 obj 寻找之前创建的代理对象，如果找到了，直接返回已有的代理对象
+      if (reactiveMap.has(obj)) {
+        return reactiveMap.get(obj);
+      }
+      // 创建新的代理对象
+      const proxy = createReactive(obj);
+      // 存储
+      reactiveMap.set(obj, proxy);
+      return proxy;
     }
     // 浅响应
     function shallowReactive(obj) {
@@ -179,6 +381,8 @@
     }
     // 在 get 拦截函数内调用 track 函数追踪变化
     function track(target, key) {
+      // 禁止追踪
+      if (!shouldTrack) return;
       // 当前副作用函数不存在，直接 return
       if (!activeEffect) return;
       // 从容器中获取字段
@@ -219,15 +423,35 @@
         lengthEffects &&
           lengthEffects.forEach((effectFn) => {
             if (key >= newVal) {
-                if (effectFn !== activeEffect) {
-                  effectsToRun.add(effectFn);
-                }
+              if (effectFn !== activeEffect) {
+                effectsToRun.add(effectFn);
+              }
             }
           });
       }
-      if (type === "ADD" || type === "DELETE") {
+      if (
+        type === "ADD" ||
+        type === "DELETE" ||
+        (type === "SET" &&
+          Object.prototype.toString.call(target) === "[object Map]")
+      ) {
         // 获取与 ITERATE_KEY 相关联的副作用函数
         const iterateEffects = depsMap.get(ITERATE_KEY);
+        // 将与 ITERATE_KEY 相关联的副作用函数也添加到 effectsToRun
+        iterateEffects &&
+          iterateEffects.forEach((effectFn) => {
+            if (effectFn !== activeEffect) {
+              effectsToRun.add(effectFn);
+            }
+          });
+      }
+
+      if (
+        (type === "ADD" || type === "DELETE") &&
+        Object.prototype.toString.call(target) === "[object Map]"
+      ) {
+        // 获取与 ITERATE_KEY 相关联的副作用函数
+        const iterateEffects = depsMap.get(MAP_KEY_ITERATE_KEY);
         // 将与 ITERATE_KEY 相关联的副作用函数也添加到 effectsToRun
         iterateEffects &&
           iterateEffects.forEach((effectFn) => {
@@ -366,12 +590,48 @@
     // });
     // obj.foo++;
 
-    const arr = reactive(["foo"]);
-    registerEffect(() => {
-      console.log(arr[0]);
-    });
+    // const obj = {};
+    // const arr = reactive([obj]);
+    // console.log(arr.includes(obj));
 
-    arr[0] = "bar";
+    // const s = new Set([1, 2, 3]);
+    // const pp = reactive(s);
+    // registerEffect(() => {
+    //   console.log(pp.size);
+    // });
+    // pp.add(14);
+
+    // const m = new Map();
+    // const p1 = reactive(m);
+    // const p2 = reactive(new Map());
+    // p1.set("p2", p2);
+    // registerEffect(() => {
+    //   console.log(m.get("p2").size);
+    // });
+    // m.get("p2").set("foo", 1);
+
+    const p1 = reactive(
+      new Map([
+        ["key1", "value1"],
+        ["key2", "value2"],
+      ])
+    );
+    registerEffect(() => {
+      for (const key of p1.keys()) {
+        console.log(key);
+      }
+    });
+    p1.set("key2", "value3");
+
+    const p2 = reactive({
+      adress: '胡同1'
+    })
+    registerEffect(() => {
+      document.body.innerHTML = p2.address
+    })
+    setTimeout(() => {
+      p2.address = '胡同2'
+    }, 1000)
   }
   fn();
 }
