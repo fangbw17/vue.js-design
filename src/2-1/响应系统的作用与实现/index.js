@@ -164,7 +164,7 @@
       [Symbol.iterator]: iterationMethod,
       entries: iterationMethod,
       values: valuesIterationMethod,
-      keys: keysIterationMethod
+      keys: keysIterationMethod,
     };
     // 迭代器方法
     function iterationMethod() {
@@ -285,7 +285,8 @@
           }
           // const res = Reflect.get(target, key, receiver);
           // const res = target[key].bind(target);
-          const res = mutableInstrumentations[key];
+          let res = mutableInstrumentations[key];
+          if (res === undefined) res = Reflect.get(target, key, receiver);
 
           // 浅响应直接返回对象
           if (isShallow) {
@@ -378,6 +379,60 @@
     }
     function shallowReadonly(obj) {
       return createReactive(obj, true /* shallow */, true);
+    }
+    // 基础数据类型的响应式函数
+    function ref(val) {
+      // Proxy 不能代理拦截基础数据类型，包裹一层
+      const wrap = {
+        value: val,
+      };
+      // 使用 Object.defineProperty 在 wrap 对象上定义一个不可枚举的属性 __v_isRef, 并且值为 true
+      Object.defineProperty(wrap, "__v_isRef", {
+        value: true,
+      });
+      // 将包裹对象变成响应式数据
+      return reactive(wrap);
+    }
+    // toRef
+    function toRef(obj, key) {
+      const wrap = {
+        get value() {
+          return obj[key];
+        },
+        set value(val) {
+          obj[key] = val
+        }
+      };
+      Object.defineProperty(wrap, '__v_isRef', {
+        value: true
+      })
+      return wrap;
+    }
+    // toRefs
+    function toRefs(obj) {
+      const ret = {};
+      for (const key in obj) {
+        ret[key] = toRef(obj, key);
+      }
+      return ret;
+    }
+    function proxyRefs(target) {
+      return new Proxy(target, {
+        get(target, key, receiver) {
+          const value = Reflect.get(target, key, receiver)
+          // 自动脱 ref 实现：如果读取的值是 ref，则返回它的value属性值
+          return value.__v_isRef ? value.value : value
+        },
+        set(target, key, newValue, receiver) {
+          const value = target[key]
+          if (value.__v_isRef) {
+            value.value = newValue
+            return true
+          }
+          return Reflect.set(target, key, value, receiver)
+          
+        }
+      })
     }
     // 在 get 拦截函数内调用 track 函数追踪变化
     function track(target, key) {
@@ -610,28 +665,60 @@
     // });
     // m.get("p2").set("foo", 1);
 
-    const p1 = reactive(
-      new Map([
-        ["key1", "value1"],
-        ["key2", "value2"],
-      ])
-    );
-    registerEffect(() => {
-      for (const key of p1.keys()) {
-        console.log(key);
-      }
-    });
-    p1.set("key2", "value3");
+    // const p1 = reactive(
+    //   new Map([
+    //     ["key1", "value1"],
+    //     ["key2", "value2"],
+    //   ])
+    // );
+    // registerEffect(() => {
+    //   for (const key of p1.keys()) {
+    //     console.log(key);
+    //   }
+    // });
+    // p1.set("key2", "value3");
 
-    const p2 = reactive({
-      adress: '胡同1'
-    })
-    registerEffect(() => {
-      document.body.innerHTML = p2.address
-    })
-    setTimeout(() => {
-      p2.address = '胡同2'
-    }, 1000)
+    // const p2 = reactive({
+    //   adress: '胡同1'
+    // })
+    // registerEffect(() => {
+    //   document.body.innerHTML = p2.address
+    // })
+    // setTimeout(() => {
+    //   p2.address = '胡同2'
+    // }, 1000)
+
+    // const refVal = ref(1)
+    // registerEffect(() => {
+    //   console.log(refVal.value);
+    // })
+    // refVal.value = 2
+
+    // const obj = reactive({ foo: 1, bar: 2 });
+
+    // const newObj = {
+    //   foo: {
+    //     get value() {
+    //       return obj.foo;
+    //     },
+    //   },
+    //   bar: {
+    //     get value() {
+    //       return obj.bar;
+    //     },
+    //   },
+    // };
+
+    // registerEffect(() => {
+    //   console.log(newObj.foo.value);
+    // });
+
+    // obj.foo = 100;
+
+    const obj = reactive({ foo: 1, bar: 2 });
+    const newObj = {...toRefs(obj)}
+    console.log(newObj.foo.value);
+    console.log(newObj.bar.value);
   }
   fn();
 }
