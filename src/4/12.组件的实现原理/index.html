@@ -118,8 +118,10 @@
 
                 } else if (type === Fragment) {
 
-                } else if (typeof type === 'object') {
+                } else if (typeof type === 'object' || typeof type === 'function') {
                     // vnode.type 的值是选项对象，作为组件来处理
+                    // type 是对象 --> 有状态组件
+                    // type 是函数 --> 函数式组件
                     if (!n1) {
                         // 挂载组件
                         this.mountComponent(n2, container, anchor)
@@ -132,11 +134,20 @@
 
             // 挂载组件
             mountComponent(vnode, container, anchor) {
+                // 检查是否是函数式组件
+                const isFuctional = typeof vnode.type === 'function'
                 // 通过 vnode 获取组件的选项对象，即 vnode.type
                 const componentOptions = vnode.type
                 // 获取组件的渲染函数 render
                 const { data, setup, props: propsOption, render, beforeCreate, created, beforeMount, mounted, beforeUpdate, updated } = componentOptions
 
+                if (isFuctional) {
+                    // 是函数式组件，则将 vnode.type 作为渲染函数，将 vnode.type.props 作为 props 选项定义即可
+                    componentOptions = {
+                        render: vnode.type,
+                        props: vnode.type.props
+                    }
+                }
                 // 生命周期钩子
                 beforeCreate && beforeCreate()
 
