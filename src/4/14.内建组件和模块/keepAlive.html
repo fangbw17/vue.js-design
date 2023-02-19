@@ -1,0 +1,64 @@
+<script>
+    const KeepAlive = {
+        // 记录是否保持 缓存
+        __isKeepAlive: true,
+        props: {
+            include: RegExp,
+            exclude: RegExp
+        },
+        setup(props, { slots }) {
+            // 缓存容器
+            // key: vnode.type
+            // value: vnode
+            const cache = new Map()
+            // 当前 KeepAlive 组件的实例
+            const instance = currentInstance
+            // 在实例上存在特殊的 keepAliveCtx 对象，该对象由渲染器注入
+            const { move, createElement } = instance.keepAliveCtx
+            // 创建隐藏容器
+            const storageContainer = createElement('div')
+            // 在渲染器中被调用
+            instance._deActivate = (vnode) => {
+                move(vnode, stotageContainer)
+            }
+            instance._activate = (vnode, container, anchor) => {
+                move(vnode, container, anchor)
+            }
+
+            return () => {
+                // KeepAlive 的默认插槽就是要被 keepAlive 的组件
+                let rawVNode = slots.default()
+                // 如果不是组件，直接渲染即可，因为非组件的虚拟节点无法被 KeepAlive
+                if (typeof rawVNode.type !== 'object') {
+                    return rawVNode
+                }
+                // 获取 “内部组件” 的 name
+                const name = rawVNode.type.name
+                // 对 name 进行匹配
+                if (name && ((props.include && !props.include.test(name)) || (props.exclude && props.exclude.test(name)))) {
+                    // 如果无法被 include 和 exclude 匹配，则直接渲染
+                    return rawVNode
+                }
+                // 挂载之前先查找是否有缓存的组件
+                const cacheVNode = cache.get(rawVNode.type)
+                if (cachedVNode) {
+                    // 有缓存的组件，则说明不应该执行挂载，而应该执行激活
+                    rawVNode.component = cacheVNode.component
+                    // 在 vnode 上添加 keepAlive 属性，标记为 true，避免渲染器重新挂载
+                    rawVNode.KeepAlive = true
+                } else {
+                    // 没有，则添加缓存
+                    cache.set(rawVNode.type, rawVNode)
+                }
+
+                // 设置 shouldKeepAlive 为 true，避免渲染器真的将组件卸载
+                rawVNode.shouldKeepAlive = true
+                // 将 keepAlive 组件的实例也添加到 vnode 上，以便在渲染器中访问
+                rawVNode.KeepAliveInstance = instance
+
+                // 渲染组件 vnode
+                return rawVNode
+            }
+        }
+    }
+</script>

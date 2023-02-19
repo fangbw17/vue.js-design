@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <style>
+        .box {
+            width: 100px;
+            height: 100px;
+            background-color: red;
+        }
+        .enter-from {
+            transform: translateX(200px)
+        }
+        .enter-to {
+            transform: translateX(0);
+        }
+        .enter-active {
+            transition: transform 1s ease-in-out;
+        }
+    </style>
+</head>
+<body>
+    
+
+    <script>
+        window.onload = function() {
+            const el = document.createElement('div')
+            el.classList.add('box')
+
+            // 在 DOM 元素被添加到页面之前，将初始状态和运动过程定义到元素上
+            el.classList.add('enter-from') // 初始状态
+            el.classList.add('enter-active') // 运动过程
+            
+            // 添加元素
+            document.body.appendChild(el)
+
+            // 在下一帧切换元素的状态
+            requestAnimationFrame(() => {
+                el.classList.remove('enter-from') // 移除enter-from
+                el.classList.add('enter-to') // 添加enter-to
+
+                el.addEventListener('transitionend', () => {
+                    el.classList.remove('enter-to')
+                    el.classList.remove('enter-active')
+                })
+            })
+        }
+    </script>
+</body>
+</html>
