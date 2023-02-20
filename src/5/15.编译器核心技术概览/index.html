@@ -1,0 +1,8 @@
+<script type="text/javascript" src="./index.js"></script>
+<script>
+    const { parse, transform } = Compiler
+    const template = `<div><p>Vue</p><p>Template</p></div>`
+    const templateAST = parse(template)
+    console.log(JSON.stringify(templateAST));
+    // const jsAST = transform(templateAST)
+</script>
