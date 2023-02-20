@@ -1,4 +1,5 @@
 var Compiler = (function (exports) {
+  // html 语法标记枚举
   const State = {
     initial: 1,
     tagBegin: 2,
@@ -53,6 +54,11 @@ var Compiler = (function (exports) {
     return templateAST;
   }
 
+  /**
+   * @description: 将模板 AST 转成 javaScript AST
+   * @param {Object} 模板 AST
+   * @return {Object} javaScript AST
+   */  
   function transform(ast) {
     const context = {
       currentNode: null,
@@ -77,6 +83,11 @@ var Compiler = (function (exports) {
     console.log(dump(ast));
   }
 
+  /**
+   * @description: 生成渲染器
+   * @param {Object} javaScript AST 
+   * @return {String} code
+   */  
   function generate(node) {
     const context = {
       // 存储最终生成的渲染函数代码
@@ -109,6 +120,11 @@ var Compiler = (function (exports) {
     return context.code;
   }
 
+  /**
+   * @description: 编译函数
+   * @param {String} HTML 语句
+   * @return {String} 渲染函数
+   */  
   function compile(template) {
     // 模板 AST
     const ast = parse(template);
