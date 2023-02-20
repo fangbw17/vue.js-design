@@ -393,22 +393,32 @@
                 const el = n2.el = n1.el
                 const oldProps = n1.props
                 const newProps = n2.props
-                // 更新 props
-                for (const key in newProps) {
-                    if (newProps[key] !== oldProps[key]) {
-                        this.patchProps(el, key, oldProps[key], newProps[key])
-                    }
-                }
-                for (const key in oldProps) {
-                    if (!(key in newProps)) {
-                        this.patchProps(el, key, oldProps[key], null)
-                    }
-                }
 
-                if (n2.dynaimcChildren) {
-                    // 调用 patchBlockChildren 函数
-                    this.patchBlockChildren(n1, n2)
+                if (n2.patchFlags) {
+                    if (n2.patchFlags === 1) {
+
+                    } else if (n2.patchFlags === 2) {
+
+                    } else if (n2.patchFlags === 3) {
+
+                    }
+                    // if (n2.dynaimcChildren) {
+                    //     // 调用 patchBlockChildren 函数
+                    //     this.patchBlockChildren(n1, n2)
+                    // } else {
+                    // }
                 } else {
+                    // 更新 props
+                    for (const key in newProps) {
+                        if (newProps[key] !== oldProps[key]) {
+                            this.patchProps(el, key, oldProps[key], newProps[key])
+                        }
+                    }
+                    for (const key in oldProps) {
+                        if (!(key in newProps)) {
+                            this.patchProps(el, key, oldProps[key], null)
+                        }
+                    }
                     this.patchChildren(n1, n2, el)
                 }
             }
