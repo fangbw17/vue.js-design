@@ -1,0 +1,116 @@
+<script>
+    const VOID_TAGS = 'area,base,br,col,embed,hr,img,input,link,meta,param,source,track,wbr'
+    // 用来判断属性是否是 boolean attribute
+    const isBooleanAttr = (key) =>
+        (`itemscope,allowfullscreen,formnovalidate,ismap,nomodule,novalidate,readonly` +
+            `,async,autofocus,autoplay,controls,default,defer,disabled,hidden,` +
+            `loop,open,required,reversed,scoped,seamless,` +
+            `checked,muted,multiple,selected`).split(',').includes(key)
+
+    // 用来判断属性名称是否合法且安全
+    const isSSRSafeAttrName = (key) => !/[>/="'\u0009\u000a\u000c\u0020]/.test(key)
+
+    function reanderElementVNode(vnode) {
+        const { type: tag, props, children } = vnode
+        // 字符串
+        let ret = ''
+        // 拼接开始标签
+        ret += `<${tag}`
+        // 拼接属性
+        if (props) {
+            ret += renderAttributes(props)
+        }
+        // 判断是否是自闭合标签
+        const isVoidTags = VOID_TAGS.includes(tag)
+        // 拼接右闭合标签
+        ret += isVoidTags ? '/>' : '>'
+        // 自闭合标签，结束拼接
+        if (isVoidTags) return ret
+
+        if (children && typeof children === 'string') {
+            // 字符串直接拼接
+            ret += children
+        } else if (children && Array.isArray(children)) {
+            // 数组循环遍历
+            children.forEach(c => {
+                ret += reanderElementVNode(c)
+            })
+        }
+        ret += `</${tag}>`
+        return ret
+    }
+
+    function renderAttributes(props) {
+        const shouldJumpProps = ['ref', 'key']
+        let ret = ''
+        for (const key in props) {
+            if (shouldJumpProps.includes(key) || /^on[^a-z]/.test(key)) {
+                continue
+            }
+            ret += renderDynamicAttr(key, props[key])
+        }
+        return ret
+    }
+
+    function renderDynamicAttr(key, value) {
+        if (isBooleanAttr(key)) {
+            // 对于 boolean attribute，如果值为 false，则什么都不需要渲染，否则只需要渲染 key 即可
+            return value === false ? `` : ` ${key}`
+        } else if (isSSRSafeAttrName(key)) {
+            // 对于其他安全的属性，执行完整的渲染，
+            // 注意：对于属性值，我们需要对它执行 HTML 转义操作
+            return value === '' ? ` ${key}` : ` ${key}="${escapeHtml(value)}"`
+        } else {
+            // 跳过不安全的属性，并打印警告信息
+            console.warn(
+                `[@vue/server-renderer] Skipped rendering unsafe attribute name: ${key}`
+            )
+            return ``
+        }
+    }
+
+    const escapeRE = /["'&<>]/
+    function escapeHtml(string) {
+        const str = '' + string
+        const match = escapeRE.exec(str)
+
+        if (!match) {
+            return str
+        }
+
+        let html = ''
+        let escaped
+        let index
+        let lastIndex = 0
+        for (index = match.index; index < str.length; index++) {
+            switch (str.charCodeAt(index)) {
+                case 34: // "
+                    escaped = '&quot;'
+                    break
+                case 38: // &
+                    escaped = '&amp;'
+                    break
+                case 39: // '
+                    escaped = '&#39;'
+                    break
+                case 60: // <
+                    escaped = '&lt;'
+                    break
+                case 62: // >
+                    escaped = '&gt;'
+                    break
+                default:
+                    continue
+            }
+
+            if (lastIndex !== index) {
+                html += str.substring(lastIndex, index)
+            }
+
+            lastIndex = index + 1
+            html += escaped
+        }
+
+        return lastIndex !== index ? html + str.substring(lastIndex, index) : html
+    }
+</script>
